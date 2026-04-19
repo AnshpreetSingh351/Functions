@@ -685,11 +685,56 @@ section{position:relative;overflow:hidden;padding:0 28px}
   .cocktail-title{font-size:52px}
   .photo-frame{width:190px;height:250px;border-radius:95px 95px 4px 4px}
 }
+
+/* ============ MUSIC TOGGLE ============ */
+.music-toggle{
+  position:fixed;
+  bottom:18px;right:18px;
+  width:46px;height:46px;
+  border-radius:50%;
+  background:rgba(26,14,21,.78);
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  border:1px solid rgba(232,199,116,.35);
+  color:var(--gold-bright);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  z-index:10001;
+  transition:transform .3s ease,background .3s ease,opacity .4s ease;
+  box-shadow:0 8px 24px -6px rgba(0,0,0,.6);
+  opacity:0;
+  pointer-events:none;
+}
+.music-toggle.visible{opacity:.92;pointer-events:auto}
+.music-toggle:hover,.music-toggle:active{transform:scale(1.08);background:rgba(42,10,18,.9)}
+.music-toggle svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8}
+.music-toggle .bars{display:flex;gap:2px;align-items:flex-end;height:16px}
+.music-toggle .bars span{
+  width:2.5px;background:currentColor;border-radius:1px;
+  animation:eq 1s ease-in-out infinite;
+}
+.music-toggle .bars span:nth-child(1){height:50%;animation-delay:-.2s}
+.music-toggle .bars span:nth-child(2){height:80%;animation-delay:-.5s}
+.music-toggle .bars span:nth-child(3){height:60%;animation-delay:-.8s}
+.music-toggle.muted .bars span{animation-play-state:paused;height:30%;opacity:.5}
+@keyframes eq{
+  0%,100%{height:30%}
+  50%{height:90%}
+}
 </style>
 </head>
 <body>
 
 <div class="progress" id="progress"></div>
+
+<!-- Background music: fades in as you scroll -->
+<audio id="bgMusic" loop preload="auto" playsinline>
+  <source src="music.mp3" type="audio/mpeg">
+</audio>
+
+<button class="music-toggle" id="musicToggle" aria-label="Toggle music">
+  <span class="bars" id="musicBars"><span></span><span></span><span></span></span>
+</button>
 
 <!-- HERO -->
 <section class="hero">
@@ -902,6 +947,89 @@ function seedShimmer(container, count){
 }
 seedShimmer(document.getElementById('shimmerField'), 40);
 seedShimmer(document.getElementById('shimmerFieldClose'), 25);
+
+/* ============ MUSIC: gentle fade-in with scroll ============ */
+(function(){
+  const audio = document.getElementById('bgMusic');
+  const btn = document.getElementById('musicToggle');
+  if(!audio || !btn) return;
+
+  audio.volume = 0;
+  let userMuted = false;
+  let started = false;
+  let targetVol = 0;
+  let currentVol = 0;
+  const MAX_VOL = 0.75;      // cap so it never blasts
+  const START_AFTER = 40;    // px of scroll before music kicks in
+  const RAMP_DISTANCE = 900; // px over which volume ramps to MAX
+
+  function computeTargetVolume(){
+    if (userMuted) return 0;
+    const y = window.scrollY || document.documentElement.scrollTop;
+    if (y <= START_AFTER) return 0;
+    const raw = (y - START_AFTER) / RAMP_DISTANCE;
+    // smoothstep for a silky ramp
+    const p = Math.max(0, Math.min(1, raw));
+    const eased = p * p * (3 - 2 * p);
+    return eased * MAX_VOL;
+  }
+
+  function showButton(){
+    btn.classList.add('visible');
+  }
+
+  function tryStart(){
+    if (started) return;
+    started = true;
+    const p = audio.play();
+    if (p && typeof p.catch === 'function'){
+      p.catch(()=>{
+        // Autoplay blocked: reset so the next gesture can try again
+        started = false;
+      });
+    }
+    showButton();
+  }
+
+  // Smoothly interpolate volume every frame for no jumps
+  function tick(){
+    targetVol = computeTargetVolume();
+    // lerp towards target
+    currentVol += (targetVol - currentVol) * 0.08;
+    if (Math.abs(currentVol - targetVol) < 0.001) currentVol = targetVol;
+    audio.volume = Math.max(0, Math.min(1, currentVol));
+    if (userMuted || currentVol < 0.01){
+      btn.classList.add('muted');
+    } else {
+      btn.classList.remove('muted');
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // Kick off playback on the first user interaction (scroll/touch/click)
+  const startEvents = ['scroll','touchstart','pointerdown','click','keydown'];
+  function onFirstGesture(){
+    tryStart();
+  }
+  startEvents.forEach(ev => window.addEventListener(ev, onFirstGesture, {passive:true, once:false}));
+
+  // Once audio actually starts, show the toggle
+  audio.addEventListener('playing', showButton);
+
+  // Manual toggle
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    userMuted = !userMuted;
+    if (!userMuted){
+      // user turned it back on; make sure it's playing
+      if (audio.paused){
+        const p = audio.play();
+        if (p && p.catch) p.catch(()=>{});
+      }
+    }
+  });
+})();
 </script>
 </body>
 </html>
